@@ -2010,7 +2010,9 @@ void PG::_finish_recovery(Context *c)
     if (scrub_after_recovery) {
       dout(10) << "_finish_recovery requeueing for scrub" << dendl;
       scrub_after_recovery = false;
-      scrubber.must_deep_scrub = true;
+      // Deep scrub in order to get corrected error counts
+      if (info.stats.stats.sum.num_scrub_errors > 0)
+        scrubber.must_deep_scrub = true;
       queue_scrub();
     }
   } else {
@@ -4725,6 +4727,12 @@ void PG::scrub_finish()
   if (scrubber.deep) {
     info.history.last_deep_scrub = info.last_update;
     info.history.last_deep_scrub_stamp = now;
+  }
+  // Since we don't know which errors were fixed, we can only clear them
+  // when every one has been fixed.
+  if (repair && scrubber.fixed == scrubber.shallow_errors + scrubber.deep_errors) {
+    assert(deep_scrub);
+    scrubber.shallow_errors = scrubber.deep_errors = 0;
   }
   if (deep_scrub) {
     if ((scrubber.shallow_errors == 0) && (scrubber.deep_errors == 0))
